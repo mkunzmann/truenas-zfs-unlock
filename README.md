@@ -61,13 +61,13 @@ Several environment variables below need to be configured for the tool to functi
 | TRUENAS_API_KEY            | TRUENAS_API_KEY=1-5x23jkKKsy    | Truenas API Key                                                                                                                   |
 | SKIP_CERT_VERIFY           | SKIP_CERT_VERIFY=true           | *Optional.* Set to `true` to skip Truenas SSL/TLS certificate verification. Required for self-signed certs. *Default=false*       |
 | CRONTAB                    | CRONTAB=*/10 * * * * * * unlock | *Optional.* Enables running on a schedule with vixie cron expressions:<br>`s m h dom month dow year command`                      |
-| ZFS__\<pool\>__\<dataset\> | ZFS__tank__photos=@#$^1234asdf  | Declare a dataset(s) to unlock. The zfs `pool/dataset` are declared after the `ZFS__` prefix, and the value is the passphrase/key |
+| DATASETS_FILE              | DATASETS_FILE=/datasets.txt     | Path to a file containing a list of datasets and their passphrases, mapped as `pool/dataset=passphrase`, one per line             |
 
 ### Environment Variables from Files (Docker Secrets)
 
 You can set any environment variable from a file by prepending it with `FILE__`.
 
-For example if you had a file mounted at `/run/secrets/dataset_key` that contained your zfs `pool/dataset` encryption key then simply set an environment variable `FILE__ZFS__pool__dataset=/var/run/secrets/dataset_key`
+For example if you had a file mounted at `/run/secrets/api_key` that contained your truenas api key then simply set an environment variable `FILE__TRUENAS_API_KEY=/var/run/secrets/api_key`
 
 ### Running on demand
 If you want to manually unlock your datasets, override the container entry command with `unlock`.
@@ -81,7 +81,9 @@ services:
       - TRUENAS_HOST=10.0.0.1:443
       - TRUENAS_API_KEY=1-5x23jkKKsy
       - SKIP_CERT_VERIFY=true
-      - ZFS__tank__photos=SomeSecureKey
+      - DATASETS_FILE=/config/datasets.txt
+    volumes:
+      - ./datasets.txt:/config/datasets.txt:ro
     command: unlock
 ```
 #### docker run

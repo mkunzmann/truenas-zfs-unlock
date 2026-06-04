@@ -38,8 +38,7 @@ load_api_token() {
 }
 
 is_locked() {
-  pool="$1"
-  dataset="$2"
+  dataset_path="$1"
 
   # Check if dataset is locked or not
   curl_stdout_file="$(mktemp)"
@@ -48,7 +47,7 @@ is_locked() {
   # shellcheck disable=SC2086
   http_code="$(
     curl ${curl_flags} -X 'GET' \
-    "https://${TRUENAS_HOST}/api/v2.0/pool/dataset?id=${pool}/${dataset}" \
+    "https://${TRUENAS_HOST}/api/v2.0/pool/dataset?id=${dataset_path}" \
     -H 'accept: */*' \
     -H "Authorization: Bearer ${api_token}" \
     --output "${curl_stdout_file}" \
@@ -80,18 +79,16 @@ is_locked() {
   if [ "${locked}" = 'true' ]; then
     return 0
   elif [ "${locked}" = 'false' ]; then
-    echo "${pool}/${dataset} is already unlocked"
+    echo "${dataset_path} is already unlocked"
     return 1
   else
-    echo "Error: got an unexpected value '${locked}' for ${pool}/${dataset} 'locked' status"
+    echo "Error: got an unexpected value '${locked}' for ${dataset_path} 'locked' status"
   fi
 }
 
 unlock (){
-  pool="$1"
-  dataset="$2"
-  dataset_path="${pool}/${dataset}"
-  passphrase="$3"
+  dataset_path="$1"
+  passphrase="$2"
 
   json=$(jq --null-input \
     --arg dataset_path "${dataset_path}" \
@@ -155,27 +152,37 @@ if [ -z "${TRUENAS_HOST}" ]; then
   exit 1
 fi
 
-zfs_env_vars="$(env | grep '^ZFS__')" || true;
-if [ -z "${zfs_env_vars}" ]; then
-  echo "Error: Missing 'ZFS__' environment variables"
+if [ -z "${DATASETS_FILE}" ]; then
+  echo "Error: Missing 'DATASETS_FILE' environment variable"
   exit 1
 fi
 
-for zfs_var in ${zfs_env_vars}; do
-  # Set dataset and pool names
-  # Expecting 'ZFS__<pool name>__<dataset__name>=<zfs passphrase>''
-  passphrase=$(echo "${zfs_var}" | cut -d= -f2)
-  var=$(echo "${zfs_var}" | cut -d= -f1)
-  var="${var#ZFS__}"  # Remove 'ZFS__' prefix
-  pool="${var%%__*}"  # Remove longest pattern from end
-  dataset="${var##*__}"  # Remove longest pattern from start
+if [ ! -f "${DATASETS_FILE}" ]; then
+  echo "Error: Datasets mapping file '${DATASETS_FILE}' does not exist"
+  exit 1
+fi
 
-  printf "\nDiscovered %s/%s, attempting to unlock now\n" "${pool}" "${dataset}"
-  # Check if locked
-  if is_locked "${pool}" "${dataset}"; then
-    echo "${pool}/${dataset} is locked, attempting to unlock..."
-    unlock "${pool}" "${dataset}" "${passphrase}"
+while IFS='=' read -r dataset_path passphrase || [ -n "${dataset_path}" ]; do
+  # Strip carriage returns in case of Windows line endings
+  dataset_path=$(echo "${dataset_path}" | tr -d '\r')
+  passphrase=$(echo "${passphrase}" | tr -d '\r')
+
+  # Skip empty lines and comments
+  if [ -z "${dataset_path}" ] || echo "${dataset_path}" | grep -q "^#"; then
+    continue
   fi
-done
+
+  if [ -z "${passphrase}" ]; then
+    echo "Warning: No passphrase found for dataset '${dataset_path}'. Skipping..."
+    continue
+  fi
+
+  printf "\nDiscovered %s, attempting to unlock now\n" "${dataset_path}"
+  # Check if locked
+  if is_locked "${dataset_path}"; then
+    echo "${dataset_path} is locked, attempting to unlock..."
+    unlock "${dataset_path}" "${passphrase}"
+  fi
+done < "${DATASETS_FILE}"
 
 printf "\nFinished unlock script, exiting...\n"
