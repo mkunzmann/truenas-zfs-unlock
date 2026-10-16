@@ -4,6 +4,8 @@ RUN apk add --no-cache \
     ca-certificates \
     curl \
     jq \
+    py3-websockets \
+    python3 \
     supercronic \
     tzdata
 
@@ -12,7 +14,8 @@ ENV TZ="UTC"
 RUN addgroup -S app && adduser -S -G app app
 
 COPY --chown=app:app --chmod=500 entry.sh /entry.sh
-COPY --chown=app:app --chmod=500 unlock.sh /usr/local/bin/unlock
+COPY --chown=app:app --chmod=500 unlock.py /usr/local/bin/unlock
+COPY --chown=app:app --chmod=500 unlock.sh /usr/local/bin/unlock.sh
 
 USER app
 

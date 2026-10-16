@@ -29,10 +29,9 @@ To protect the data on your drives from unauthorised access during transportatio
 ### Shared tags
 * `latest`, `${IMAGE_VERSION}`
 
-This image uses the [semver](https://semver.org/) format for releases, ~~with this image's major version matching the Truenas API major version in use~~.
-~~For example, all `2.*.*` image releases use Truenas API `v2`~~.
+This image uses the [semver](https://semver.org/) format for releases.
 
-**Note:** Truenas has changed their api versioning and introduced breaking changes between versions 25.04 and 25.10, see release notes to ensure compatibility.
+**Note:** This tool uses the TrueNAS JSON-RPC 2.0 over WebSocket API (`/api/current` and `/websocket`), replacing the legacy REST API that was deprecated in TrueNAS 25.04 and scheduled for removal in 26.04.
 
 **Avoid using the `latest` tag in production environments. Lock the tag to a specific version.**
 
@@ -48,7 +47,7 @@ This tool is designed to run on a machine that has network access to the Truenas
 
 Firstly set up (or edit) your zfs datasets to use "Passphrase" encryption, this will enable you to set the key yourself and therefore the encryption keys won't be stored by Truenas.
 
-Generate a Truenas API key in the web UI, as this tool works by sending unlock requests via the Truenas API.
+Generate a Truenas API key in the web UI, as this tool works by sending unlock requests via the Truenas WebSocket JSON-RPC API.
 
 Several environment variables below need to be configured for the tool to function.
 
@@ -67,7 +66,7 @@ Several environment variables below need to be configured for the tool to functi
 
 You can set any environment variable from a file by prepending it with `FILE__`.
 
-For example if you had a file mounted at `/run/secrets/api_key` that contained your truenas api key then simply set an environment variable `FILE__TRUENAS_API_KEY=/var/run/secrets/api_key`
+For example if you had a file mounted at `/run/secrets/api_key` that contained your truenas api key then simply set an environment variable `FILE__TRUENAS_API_KEY=/run/secrets/api_key`
 
 ### Running on demand
 If you want to manually unlock your datasets, override the container entry command with `unlock`.
@@ -93,7 +92,8 @@ docker run --rm \
     -e TRUENAS_HOST=10.0.0.1:443 \
     -e TRUENAS_API_KEY=1-5x23jkKKsy \
     -e SKIP_CERT_VERIFY=true \
-    -e ZFS__tank__photos=SomeSecureKey \
+    -e DATASETS_FILE=/config/datasets.txt \
+    -v $(pwd)/datasets.txt:/config/datasets.txt:ro \
     thorpejosh/truenas-zfs-unlock:latest unlock
 ```
 
@@ -111,11 +111,12 @@ services:
       - TRUENAS_HOST=10.0.0.1:443
       - TRUENAS_API_KEY=1-5x23jkKKsy
       - SKIP_CERT_VERIFY=true
-      - ZFS__tank__home=someRandomGeneratedKey
-      - ZFS__tank__photos=SomeSecureKey
+      - DATASETS_FILE=/config/datasets.txt
       # supercronic allows vixie cron expressions:
       # s m h dom month dow year command
       - CRONTAB=*/10 * * * * * * unlock
+    volumes:
+      - ./datasets.txt:/config/datasets.txt:ro
     restart: unless-stopped
 ```
 #### docker-compose using secrets
@@ -124,25 +125,21 @@ services:
 secrets:
   TRUENAS_API_KEY:
     file: ${PWD}/.secrets/.api_key
-  ZFS_HOME_KEY:
-    file: ${PWD}/.secrets/.home_key
-  ZFS_PHOTOS_KEY:
-    file: ${PWD}/.secrets/.photos_key
+  DATASETS_FILE:
+    file: ${PWD}/.secrets/datasets.txt
 
 services:
   truenas_unlock:
     image: thorpejosh/truenas-zfs-unlock:latest
     secrets:
       - TRUENAS_API_KEY
-      - ZFS_HOME_KEY
-      - ZFS_PHOTOS_KEY
+      - DATASETS_FILE
     environment:
       - TZ=America/Chicago
       - TRUENAS_HOST=10.0.0.1:443
       - SKIP_CERT_VERIFY=true
       - FILE__TRUENAS_API_KEY=/run/secrets/TRUENAS_API_KEY
-      - FILE__ZFS__tank__home=/run/secrets/ZFS_HOME_KEY
-      - FILE__ZFS__tank__photos=/run/secrets/ZFS_PHOTOS_KEY
+      - DATASETS_FILE=/run/secrets/DATASETS_FILE
       # supercronic allows vixie cron expressions:
       # s m h dom month dow year command
       - CRONTAB=*/10 * * * * * * unlock
